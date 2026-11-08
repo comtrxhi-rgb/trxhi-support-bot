@@ -1,0 +1,20 @@
+{
+  "name": "trxhi-support-bot",
+  "version": "1.0.0",
+  "description": "简洁、全中文、可自定义的 Telegram 项目介绍与客服机器人。",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "demo": "node src/demo.js",
+    "check": "node --check src/*.js",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": ["telegram", "客服机器人", "中文机器人", "customer-service"],
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "telegraf": "^4.16.3"
+  }
+}
