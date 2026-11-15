@@ -1,93 +1,78 @@
-import { Markup, Telegraf } from 'telegraf';
 import { faqText, projectText, welcomeText, escapeHtml } from './content.js';
 import { repliedUserId, ticketHeader } from './ticket.js';
 
-const mediaTypes = ['photo', 'document', 'video', 'voice', 'audio', 'animation', 'sticker'];
-
-export function createBot(config) {
-  const bot = new Telegraf(config.botToken);
-  const supportUsers = new Set();
-
-  const menu = () => Markup.keyboard([
+const menu = {
+  keyboard: [
     ['🚀 项目介绍', '🌐 访问官网'],
     ['❓ 常见问题', '💬 联系人工客服']
-  ]).resize();
+  ],
+  resize_keyboard: true
+};
 
-  bot.start(ctx => ctx.reply(welcomeText(config), { parse_mode: 'HTML', ...menu() }));
-  bot.command('about', ctx => ctx.reply(projectText(config), { parse_mode: 'HTML' }));
-  bot.command('faq', ctx => ctx.reply(faqText, { parse_mode: 'HTML' }));
-  bot.command('website', ctx => showWebsite(ctx, config));
-  bot.command('support', ctx => startSupport(ctx, supportUsers));
-  bot.command('done', ctx => stopSupport(ctx, supportUsers, menu));
+export async function handleUpdate(update, telegram, config) {
+  const message = update.message;
+  if (!message?.from || !message.chat) return;
 
-  bot.hears('🚀 项目介绍', ctx => ctx.reply(projectText(config), { parse_mode: 'HTML' }));
-  bot.hears('🌐 访问官网', ctx => showWebsite(ctx, config));
-  bot.hears('❓ 常见问题', ctx => ctx.reply(faqText, { parse_mode: 'HTML' }));
-  bot.hears('💬 联系人工客服', ctx => startSupport(ctx, supportUsers));
+  const userId = repliedUserId(message);
+  if (userId && isAdmin(message, config)) return replyToCustomer(message, userId, telegram);
+  if (message.chat.type !== 'private') return;
 
-  bot.on('text', async ctx => {
-    if (isAdminReply(ctx, config)) return sendAdminText(ctx);
-    if (ctx.chat.type !== 'private') return;
-    if (supportUsers.has(ctx.from.id)) return sendCustomerText(ctx, config);
-    return ctx.reply('请使用下方菜单选择服务。', menu());
-  });
+  const text = message.text;
+  if (text === '/start') return sendWelcome(message.chat.id, telegram, config);
+  if (text === '/about' || text === '🚀 项目介绍') {
+    return telegram.sendMessage(message.chat.id, projectText(config), { parse_mode: 'HTML' });
+  }
+  if (text === '/faq' || text === '❓ 常见问题') {
+    return telegram.sendMessage(message.chat.id, faqText, { parse_mode: 'HTML' });
+  }
+  if (text === '/website' || text === '🌐 访问官网') return sendWebsite(message.chat.id, telegram, config);
+  if (text === '/support' || text === '💬 联系人工客服') {
+    return telegram.sendMessage(message.chat.id, '💬 请直接发送你的问题、图片或文件，客服会尽快回复。');
+  }
 
-  bot.on(mediaTypes, async ctx => {
-    if (isAdminReply(ctx, config)) return sendAdminMedia(ctx);
-    if (ctx.chat.type !== 'private') return;
-    if (supportUsers.has(ctx.from.id)) return sendCustomerMedia(ctx, config);
-    return ctx.reply('如需发送文件或截图，请先点击“💬 联系人工客服”。', menu());
-  });
-
-  bot.catch((error, ctx) => {
-    console.error('[机器人错误]', error);
-    return ctx.reply('系统暂时繁忙，请稍后再试。');
-  });
-
-  return bot;
+  return forwardToSupport(message, telegram, config);
 }
 
-function showWebsite(ctx, config) {
-  return ctx.reply(`🌐 <b>${escapeHtml(config.projectName)} 官方网站</b>`, {
+function isAdmin(message, config) {
+  return String(message.chat.id) === String(config.supportGroupId) &&
+    config.adminIds.includes(message.from.id);
+}
+
+function sendWelcome(chatId, telegram, config) {
+  return telegram.sendMessage(chatId, welcomeText(config), {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([[Markup.button.url('立即访问官网', config.websiteUrl)]])
+    reply_markup: menu
   });
 }
 
-function startSupport(ctx, sessions) {
-  sessions.add(ctx.from.id);
-  return ctx.reply('💬 已进入人工客服。\n\n请直接发送你的问题、图片或文件。咨询结束后发送 /done。');
+function sendWebsite(chatId, telegram, config) {
+  return telegram.sendMessage(chatId, `🌐 <b>${escapeHtml(config.projectName)} 官方网站</b>`, {
+    parse_mode: 'HTML',
+    reply_markup: {
+      inline_keyboard: [[{ text: '立即访问官网', url: config.websiteUrl }]]
+    }
+  });
 }
 
-function stopSupport(ctx, sessions, menu) {
-  sessions.delete(ctx.from.id);
-  return ctx.reply('✅ 本次咨询已结束，感谢你的联系。', menu());
+async function forwardToSupport(message, telegram, config) {
+  await telegram.sendMessage(
+    config.supportGroupId,
+    ticketHeader(message.from, message.text || message.caption || '用户发送了一个附件'),
+    { parse_mode: 'HTML' }
+  );
+  if (!message.text) {
+    await telegram.copyMessage(config.supportGroupId, message.chat.id, message.message_id);
+  }
+  return telegram.sendMessage(message.chat.id, '✅ 消息已发送，客服会尽快回复。');
 }
 
-async function sendCustomerText(ctx, config) {
-  await ctx.telegram.sendMessage(config.supportGroupId, ticketHeader(ctx.from, ctx.message.text), { parse_mode: 'HTML' });
-  return ctx.reply('✅ 消息已发送，客服会尽快回复。');
-}
-
-async function sendCustomerMedia(ctx, config) {
-  await ctx.telegram.sendMessage(config.supportGroupId, ticketHeader(ctx.from, ctx.message.caption || '用户发送了一个附件'), { parse_mode: 'HTML' });
-  await ctx.telegram.copyMessage(config.supportGroupId, ctx.chat.id, ctx.message.message_id);
-  return ctx.reply('✅ 附件已发送，客服会尽快回复。');
-}
-
-function isAdminReply(ctx, config) {
-  return String(ctx.chat.id) === String(config.supportGroupId) &&
-    config.adminIds.includes(ctx.from.id) && Boolean(repliedUserId(ctx.message));
-}
-
-async function sendAdminText(ctx) {
-  const userId = repliedUserId(ctx.message);
-  await ctx.telegram.sendMessage(userId, `💬 <b>客服回复</b>\n\n${escapeHtml(ctx.message.text)}`, { parse_mode: 'HTML' });
-  return ctx.reply('✅ 已回复用户。');
-}
-
-async function sendAdminMedia(ctx) {
-  const userId = repliedUserId(ctx.message);
-  await ctx.telegram.copyMessage(userId, ctx.chat.id, ctx.message.message_id);
-  return ctx.reply('✅ 已回复用户。');
+async function replyToCustomer(message, userId, telegram) {
+  if (message.text) {
+    await telegram.sendMessage(userId, `💬 <b>客服回复</b>\n\n${escapeHtml(message.text)}`, {
+      parse_mode: 'HTML'
+    });
+  } else {
+    await telegram.copyMessage(userId, message.chat.id, message.message_id);
+  }
+  return telegram.sendMessage(message.chat.id, '✅ 已回复用户。');
 }

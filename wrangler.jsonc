@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trxhi-support-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "observability": {
+    "enabled": true
+  }
+}

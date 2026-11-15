@@ -1,91 +1,113 @@
 # TRXHI 中文客服机器人
 
-一个独立、简洁、全中文的 Telegram 项目介绍与人工客服机器人。适合开源后让其他项目快速修改使用，也可以作为 [TRXHI 官网](https://trxhi.com) 的 Telegram 入口。
+一个只运行在 Cloudflare Workers 上的简洁中文 Telegram 客服机器人。它使用 Telegram Webhook，不需要服务器、Docker、数据库或常驻进程。
 
 ## 功能
 
-- 中文主菜单：项目介绍、访问官网、常见问题、人工客服
-- 用户消息转发到客服群，客服直接回复工单即可回答用户
-- 支持文字、图片、文件、视频、语音和贴纸
-- 项目名称、介绍、口号和官网均通过 `.env` 修改
-- 自带演示模式，无需 Token 即可预览
-- 无数据库、无后台面板，部署和维护简单
+- 中文菜单：项目介绍、官网、常见问题、人工客服
+- 将客户文字、图片和文件转发到客服群
+- 客服直接回复工单，机器人把内容送回客户私聊
+- 无数据库、无用户资料存储
+- 使用 Webhook 密钥验证 Telegram 请求
+- 可由 Cloudflare 免费套餐运行
 
-## 先看演示
+## 准备
 
-需要 Node.js 20 或更高版本：
+你需要：
+
+- 一个 Cloudflare 账号
+- Node.js 20 或更高版本
+- 通过 `@BotFather` 创建的 Telegram Bot Token
+- 客服群 ID（通常以 `-100` 开头）
+- 可以回复客户的客服人员 Telegram 数字 ID
+
+把机器人加入客服群。若要回复图片和文件，建议将机器人设为群管理员。
+
+## 部署
 
 ```bash
 npm install
-npm run demo
+npx wrangler login
+npm run deploy
 ```
 
-## 五分钟启动
+部署完成后，Wrangler 会显示 Worker 地址，例如：
 
-1. 在 Telegram 联系 `@BotFather`，执行 `/newbot` 创建机器人并取得 Token。
-2. 新建一个客服群，把机器人加入群组。
-3. 在群内临时加入 `@RawDataBot` 等 ID 查询机器人，取得以 `-100` 开头的群组 ID，随后可将查询机器人移除。
-4. 取得客服人员的 Telegram 数字 ID。
-5. 创建配置并启动：
+```text
+https://trxhi-support-bot.<你的子域名>.workers.dev
+```
+
+设置运行配置。`WEBHOOK_SECRET` 请使用一段随机字符串，只能包含英文字母、数字、下划线和连字符。
 
 ```bash
-cp .env.example .env
-npm install
-npm start
+npx wrangler secret put BOT_TOKEN
+npx wrangler secret put WEBHOOK_SECRET
+npx wrangler secret put SUPPORT_GROUP_ID
+npx wrangler secret put ADMIN_IDS
 ```
 
-编辑 `.env`：
+`ADMIN_IDS` 支持多个 ID，用英文逗号分隔，例如 `123456789,987654321`。
 
-```env
-BOT_TOKEN=123456:你的Token
-SUPPORT_GROUP_ID=-1001234567890
-ADMIN_IDS=123456789,987654321
+可选的项目资料也可以通过 Worker 变量设置：
 
-PROJECT_NAME=TRXHI
-PROJECT_SLOGAN=简单、快速、透明的 TRON 服务平台
-WEBSITE_URL=https://trxhi.com
-PROJECT_DESCRIPTION=TRXHI 提供 TRON 能量租赁与相关链上服务，让用户以更低成本完成 TRC20 转账。
-```
+- `PROJECT_NAME`
+- `PROJECT_SLOGAN`
+- `WEBSITE_URL`（必须是 HTTPS）
+- `PROJECT_DESCRIPTION`
 
-## 客服如何使用
-
-1. 用户点击“💬 联系人工客服”。
-2. 用户发送问题、截图或文件。
-3. 客服群收到带有用户资料的工单。
-4. `ADMIN_IDS` 中的客服人员直接回复该工单消息。
-5. 机器人把回复发送到用户私聊。
-6. 用户发送 `/done` 结束咨询。
-
-为了正确识别用户，客服必须回复带有“新客服消息”的工单，不要回复后面单独复制的附件。
-
-## Docker 部署
+最后注册 Telegram Webhook。替换以下三个值：
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
+curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"<WORKER_URL>","secret_token":"<WEBHOOK_SECRET>","allowed_updates":["message"]}'
 ```
 
-## 自定义
+返回 `{"ok":true,...}` 后，向机器人发送 `/start` 即可测试。
 
-普通项目只需要修改 `.env`。如需调整菜单、介绍或常见问题，可编辑：
+## 客服使用方法
 
-- `src/content.js`：项目介绍和常见问题
-- `src/bot.js`：菜单及客服流程
-- `.env`：项目名称、官网和客服配置
+1. 客户发送问题、图片或文件。
+2. 客服群收到带有客户 ID 的工单。
+3. 客服必须直接回复带有“新客服消息”的工单。
+4. 机器人将客服的文字或附件发送给客户。
 
-## 安全说明
+只有 `ADMIN_IDS` 中的人员可以通过客服群回复客户。
 
-- 不要提交 `.env` 或机器人 Token。
-- 只有 `ADMIN_IDS` 中的人员能够通过客服群回复用户。
-- 本项目不收集密码、私钥或助记词。请在客服规范中提醒用户不要发送这些信息。
-
-## 测试
+## 本地检查
 
 ```bash
 npm run check
 npm test
 ```
 
+本地运行 Worker 时，将变量写入不提交 Git 的 `.dev.vars`：
+
+```env
+BOT_TOKEN=你的机器人Token
+WEBHOOK_SECRET=本地测试密钥
+SUPPORT_GROUP_ID=-1001234567890
+ADMIN_IDS=123456789
+```
+
+然后运行 `npm run dev`。
+
+## 更新
+
+修改代码后重新运行：
+
+```bash
+npm run deploy
+```
+
+Worker 地址不变，无需重新注册 Webhook。
+
+## 安全
+
+- 不要将 Token、Webhook 密钥或 `.dev.vars` 提交到 GitHub。
+- 不要要求客户发送密码、私钥或助记词。
+- 定期检查 Cloudflare 日志，并及时移除不再任职的客服 ID。
+
 ## 开源协议
 
-[MIT](LICENSE) —— 可以自由使用、修改和发布，请保留版权与许可证声明。
+[MIT](LICENSE)
