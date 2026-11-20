@@ -37,5 +37,9 @@ await withRetry('同步 Telegram 命令', () => bot.telegram.setMyCommands(comma
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-await withRetry('启动 Telegram 机器人', () => bot.launch());
-console.log(`${config.projectName} 中文客服机器人已启动。`);
+bot.launch({}, () => {
+  console.log(`${config.projectName} 中文客服机器人已启动。`);
+}).catch(error => {
+  console.error('Telegram 机器人运行失败。', error);
+  process.exit(1);
+});
