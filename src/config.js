@@ -12,7 +12,10 @@ export const config = {
   slogan: process.env.PROJECT_SLOGAN || '简单、快速、透明的 TRON 服务平台',
   websiteUrl: process.env.WEBSITE_URL || 'https://trxhi.com',
   description: process.env.PROJECT_DESCRIPTION ||
-    'TRXHI 提供 TRON 能量租赁与相关链上服务，让用户以更低成本完成 TRC20 转账。'
+    'TRXHI 提供 TRON 能量租赁与相关链上服务，让用户以更低成本完成 TRC20 转账。',
+  settingsApiUrl: process.env.SETTINGS_API_URL || '',
+  settingsApiToken: process.env.SETTINGS_API_TOKEN || '',
+  settingsPollMs: Number(process.env.SETTINGS_POLL_MS || 60000)
 };
 
 export function validateConfig(value = config) {

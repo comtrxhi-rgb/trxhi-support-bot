@@ -1,13 +1,21 @@
 import { createBot } from './bot.js';
 import { config, validateConfig } from './config.js';
+import { loadRuntimeConfig, watchRuntimeToken } from './runtime-config.js';
 
-const errors = validateConfig(config);
+let runtimeConfig = config;
+try {
+  runtimeConfig = await loadRuntimeConfig(config);
+} catch (error) {
+  console.warn(`远程设置暂不可用，继续使用本地配置：${error.message}`);
+}
+
+const errors = validateConfig(runtimeConfig);
 if (errors.length) {
   console.error(`配置不完整：${errors.join('、')}。\n首次体验请运行：npm run demo`);
   process.exit(1);
 }
 
-const bot = createBot(config);
+const bot = createBot(runtimeConfig);
 const commands = [
   { command: 'start', description: '打开主菜单' },
   { command: 'about', description: '了解项目' },
@@ -38,7 +46,8 @@ await withRetry('同步 Telegram 命令', () => bot.telegram.setMyCommands(comma
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 bot.launch({}, () => {
-  console.log(`${config.projectName} 中文客服机器人已启动。`);
+  watchRuntimeToken(config, runtimeConfig.botToken);
+  console.log(`${runtimeConfig.projectName} 中文客服机器人已启动。`);
 }).catch(error => {
   console.error('Telegram 机器人运行失败。', error);
   process.exit(1);
