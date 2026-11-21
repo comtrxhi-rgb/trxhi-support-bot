@@ -1,11 +1,13 @@
 import { Markup, Telegraf } from 'telegraf';
 import { faqText, projectText, welcomeText, escapeHtml } from './content.js';
 import { repliedUserId, ticketHeader } from './ticket.js';
+import { createMessageGuard } from './message-filter.js';
 
 const mediaTypes = ['photo', 'document', 'video', 'voice', 'audio', 'animation', 'sticker'];
 
 export function createBot(config) {
   const bot = new Telegraf(config.botToken);
+  const guard = createMessageGuard();
 
   const menu = () => Markup.keyboard([
     ['🚀 项目介绍', '🌐 访问官网'],
@@ -27,12 +29,16 @@ export function createBot(config) {
   bot.on('text', async ctx => {
     if (isAdminReply(ctx, config)) return sendAdminText(ctx);
     if (ctx.chat.type !== 'private') return;
-    return sendCustomerText(ctx, config);
+    const result = guard.text(ctx.from.id, ctx.message.text);
+    if (!result.allowed) return ctx.reply(result.message);
+    return sendCustomerText(ctx, config, result);
   });
 
   bot.on(mediaTypes, async ctx => {
     if (isAdminReply(ctx, config)) return sendAdminMedia(ctx);
     if (ctx.chat.type !== 'private') return;
+    const result = guard.media(ctx.from.id, ctx.message);
+    if (!result.allowed) return ctx.reply(result.message);
     return sendCustomerMedia(ctx, config);
   });
 
@@ -59,9 +65,10 @@ function stopSupport(ctx, menu) {
   return ctx.reply('✅ 本次咨询已结束，感谢你的联系。', menu());
 }
 
-async function sendCustomerText(ctx, config) {
-  await ctx.telegram.sendMessage(config.supportGroupId, ticketHeader(ctx.from, ctx.message.text), { parse_mode: 'HTML' });
-  return ctx.reply('✅ 消息已发送到客服群，客服会尽快回复。\n\n你可以继续直接发送消息。');
+async function sendCustomerText(ctx, config, filtered) {
+  await ctx.telegram.sendMessage(config.supportGroupId, ticketHeader(ctx.from, filtered.value), { parse_mode: 'HTML' });
+  const warning = filtered.warning ? `\n\n${filtered.warning}` : '';
+  return ctx.reply(`✅ 消息已发送到客服群，客服会尽快回复。\n\n你可以继续直接发送消息。${warning}`);
 }
 
 async function sendCustomerMedia(ctx, config) {
