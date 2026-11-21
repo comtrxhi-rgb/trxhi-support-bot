@@ -6,7 +6,6 @@ const mediaTypes = ['photo', 'document', 'video', 'voice', 'audio', 'animation',
 
 export function createBot(config) {
   const bot = new Telegraf(config.botToken);
-  const supportUsers = new Set();
 
   const menu = () => Markup.keyboard([
     ['🚀 项目介绍', '🌐 访问官网'],
@@ -17,26 +16,24 @@ export function createBot(config) {
   bot.command('about', ctx => ctx.reply(projectText(config), { parse_mode: 'HTML' }));
   bot.command('faq', ctx => ctx.reply(faqText, { parse_mode: 'HTML' }));
   bot.command('website', ctx => showWebsite(ctx, config));
-  bot.command('support', ctx => startSupport(ctx, supportUsers));
-  bot.command('done', ctx => stopSupport(ctx, supportUsers, menu));
+  bot.command('support', ctx => startSupport(ctx));
+  bot.command('done', ctx => stopSupport(ctx, menu));
 
   bot.hears('🚀 项目介绍', ctx => ctx.reply(projectText(config), { parse_mode: 'HTML' }));
   bot.hears('🌐 访问官网', ctx => showWebsite(ctx, config));
   bot.hears('❓ 常见问题', ctx => ctx.reply(faqText, { parse_mode: 'HTML' }));
-  bot.hears('💬 联系人工客服', ctx => startSupport(ctx, supportUsers));
+  bot.hears('💬 联系人工客服', ctx => startSupport(ctx));
 
   bot.on('text', async ctx => {
     if (isAdminReply(ctx, config)) return sendAdminText(ctx);
     if (ctx.chat.type !== 'private') return;
-    if (supportUsers.has(ctx.from.id)) return sendCustomerText(ctx, config);
-    return ctx.reply('请使用下方菜单选择服务。', menu());
+    return sendCustomerText(ctx, config);
   });
 
   bot.on(mediaTypes, async ctx => {
     if (isAdminReply(ctx, config)) return sendAdminMedia(ctx);
     if (ctx.chat.type !== 'private') return;
-    if (supportUsers.has(ctx.from.id)) return sendCustomerMedia(ctx, config);
-    return ctx.reply('如需发送文件或截图，请先点击“💬 联系人工客服”。', menu());
+    return sendCustomerMedia(ctx, config);
   });
 
   bot.catch((error, ctx) => {
@@ -54,25 +51,23 @@ function showWebsite(ctx, config) {
   });
 }
 
-function startSupport(ctx, sessions) {
-  sessions.add(ctx.from.id);
-  return ctx.reply('💬 已进入人工客服。\n\n请直接发送你的问题、图片或文件。咨询结束后发送 /done。');
+function startSupport(ctx) {
+  return ctx.reply('💬 请直接发送你的问题、图片或文件。\n\n你的下一条消息会自动转发给客服群。');
 }
 
-function stopSupport(ctx, sessions, menu) {
-  sessions.delete(ctx.from.id);
+function stopSupport(ctx, menu) {
   return ctx.reply('✅ 本次咨询已结束，感谢你的联系。', menu());
 }
 
 async function sendCustomerText(ctx, config) {
   await ctx.telegram.sendMessage(config.supportGroupId, ticketHeader(ctx.from, ctx.message.text), { parse_mode: 'HTML' });
-  return ctx.reply('✅ 消息已发送，客服会尽快回复。');
+  return ctx.reply('✅ 消息已发送到客服群，客服会尽快回复。\n\n你可以继续直接发送消息。');
 }
 
 async function sendCustomerMedia(ctx, config) {
   await ctx.telegram.sendMessage(config.supportGroupId, ticketHeader(ctx.from, ctx.message.caption || '用户发送了一个附件'), { parse_mode: 'HTML' });
   await ctx.telegram.copyMessage(config.supportGroupId, ctx.chat.id, ctx.message.message_id);
-  return ctx.reply('✅ 附件已发送，客服会尽快回复。');
+  return ctx.reply('✅ 附件已发送到客服群，客服会尽快回复。\n\n你可以继续直接发送消息。');
 }
 
 function isAdminReply(ctx, config) {
